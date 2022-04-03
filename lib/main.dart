@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:android_path_provider/android_path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:downloader/DownloadItem.dart';
+import 'package:downloader/filespage.dart';
 import 'package:downloader/taskInfo.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -112,7 +113,7 @@ class _MyHomePageState extends State<MyHomePage> {
           'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
     }
   ];
-
+  var dirs = [];
   List<TaskInfo>? _tasks;
   late List<ItemHolder> _items;
   late bool _isLoading;
@@ -249,6 +250,19 @@ class _MyHomePageState extends State<MyHomePage> {
     return new Scaffold(
       appBar: new AppBar(
         title: new Text(widget.title!),
+        actions: [
+          IconButton(
+              onPressed: () {
+                Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => FilesPage()));
+              },
+              icon: Icon(Icons.folder)),
+          IconButton(
+              onPressed: () {
+                retryFailed();
+              },
+              icon: Icon(Icons.refresh))
+        ],
       ),
       body: Builder(
           builder: (context) => _isLoading
@@ -285,24 +299,24 @@ class _MyHomePageState extends State<MyHomePage> {
                     : DownloadItem(
                         data: item,
                         onItemClick: (task) {
-                          initFile();
+                          // initFile();
                           // print(task!.name!);
-                          // Navigator.of(context).push(
-                          //     MaterialPageRoute(builder: (_) => PlayVideoPage()));
+                          // Navigator.of(context).push(MaterialPageRoute(
+                          //     builder: (_) => PlayVideoPage()));
                           // Get.to(
                           //   () => const PlayVideoPage(),
                           // );
-                          // _openDownloadedFile(task).then((success) {
-                          //   if (!success) {
-                          //     Scaffold.of(context).showSnackBar(SnackBar(
-                          //         content: Text('Cannot open this file')));
-                          //   }
-                          // });
+                          _openDownloadedFile(task).then((success) {
+                            if (!success) {
+                              Scaffold.of(context).showSnackBar(SnackBar(
+                                  content: Text('Cannot open this file')));
+                            }
+                          });
                         },
                         onActionClick: (task) {
                           print(task.name);
                           if (task.status == DownloadTaskStatus.undefined) {
-                            requestDownload(task);
+                            // requestDownload(task);
                           } else if (task.status ==
                               DownloadTaskStatus.running) {
                             _pauseDownload(task);
@@ -416,10 +430,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> requestDownload(TaskInfo task) async {
+    var path = await findDir(task.link!);
     task.taskId = await FlutterDownloader.enqueue(
       url: task.link!,
-      headers: {"auth": "test_for_sql_encoding"},
-      savedDir: _localPath, // _localPath,
+      // headers: {"auth": "test_for_sql_encoding"},
+      savedDir: path, // _localPath,
       showNotification: true,
       openFileFromNotification: true,
       saveInPublicStorage: true,
@@ -494,15 +509,24 @@ class _MyHomePageState extends State<MyHomePage> {
     //   _items.add(ItemHolder(name: _tasks![i].name, task: _tasks![i]));
     //   count++;
     // }
+    var data = await getFileData("assets/files.txt");
 
-    _tasks!.addAll(_images
-        .map((image) => TaskInfo(name: image['name'], link: image['link'])));
+    print(data.length);
+    var list = data.split('\n');
+    list.forEach((element) {
+      var filename = element.split('/').last;
+      var task = TaskInfo(name: filename, link: element);
+      _tasks!.add(task);
+      _items.add(ItemHolder(name: task.name, task: task));
+    });
+    // _tasks!.addAll(_images
+    //     .map((image) => TaskInfo(name: image['name'], link: image['link'])));
 
-    _items.add(ItemHolder(name: 'Images'));
-    for (int i = count; i < _tasks!.length; i++) {
-      _items.add(ItemHolder(name: _tasks![i].name, task: _tasks![i]));
-      count++;
-    }
+    // _items.add(ItemHolder(name: 'Images'));
+    // for (int i = count; i < _tasks!.length; i++) {
+    //   _items.add(ItemHolder(name: _tasks![i].name, task: _tasks![i]));
+    //   count++;
+    // }
 
     // _tasks!.addAll(_videos
     //     .map((video) => TaskInfo(name: video['name'], link: video['link'])));
@@ -529,9 +553,18 @@ class _MyHomePageState extends State<MyHomePage> {
       await _prepareSaveDir();
     }
 
+    for (TaskInfo info in _tasks!) {
+      if (info.status != DownloadTaskStatus.complete) requestDownload(info);
+    }
     setState(() {
       _isLoading = false;
     });
+  }
+
+  retryFailed() {
+    for (TaskInfo info in _tasks!) {
+      if (info.status != DownloadTaskStatus.complete) requestDownload(info);
+    }
   }
 
   Future<void> _prepareSaveDir() async {
